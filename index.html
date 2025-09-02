@@ -1,0 +1,212 @@
+### Overview
+
+You want an online, “answer-anything” chatbot you can fully customize in code. Here’s a single-file site you can host on GitHub Pages. It fetches live info from free public sources (no keys needed) and falls back gracefully so it feels broad and useful. It’s built to be extended: add or rearrange “providers” to route any query to the right data source.
+
+---
+
+### What you get
+
+- Live facts: Wikipedia and DuckDuckGo Instant Answer.
+- Weather and time by city: Open‑Meteo Geocoding + Forecast, native timezone formatting.
+- Currency conversion: ExchangeRate.host.
+- Crypto prices: CoinGecko.
+- Tech news: Hacker News API.
+- Math and unit conversions.
+- Browser info, URL summarizer (CORS-permitting).
+- Pluggable “providers” architecture so you can add more sources.
+
+---
+
+### How to deploy
+
+1. Create a public repo (e.g., sleep-ai-online), add this as index.html, commit.
+2. Repo Settings → Pages → Deploy from a branch, select main and root.
+3. Wait a minute for your github.io URL to go live.
+
+---
+
+### Customize
+
+- Add a new provider: copy the provider template in the code, set match() and answer().
+- Reorder providers: the first match wins; place your preferred sources higher.
+- Extend commands and NLP: tweak parse patterns inside providers.
+- Add datasets: host JSON in the repo and fetch it directly (no keys needed).
+
+---
+
+### Full index.html
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sleep AI — Online Chatbot</title>
+  <meta name="description" content="Answer-anything chatbot using free public sources. No API keys. Fully customizable." />
+  <style>
+    :root { color-scheme: light dark;
+      --bg:#0e0f12; --panel:#14161b; --muted:#98a2b3; --text:#e6e9ef;
+      --accent:#7c5cff; --accent2:#43d9ad; --border:#232630; --error:#ff5c7c;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;height:100%;background:radial-gradient(1200px 600px at 80% -10%,#182032 0%,rgba(24,32,50,0) 60%) no-repeat,var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans",sans-serif}
+    .app{height:100%;display:grid;grid-template-rows:auto 1fr auto}
+    header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;background:linear-gradient(180deg,rgba(124,92,255,.08),rgba(124,92,255,0))}
+    .brand{display:flex;align-items:center;gap:10px}
+    .logo{width:28px;height:28px;border-radius:8px;background:conic-gradient(from 200deg,var(--accent),var(--accent2));box-shadow:0 0 18px rgba(124,92,255,.35)}
+    .title{font-weight:700;letter-spacing:.2px}
+    .subtitle{color:var(--muted);font-size:12px}
+    .actions{display:flex;gap:8px}
+    button{border:1px solid var(--border);background:#111319;color:var(--text);border-radius:10px;padding:8px 12px;cursor:pointer}
+    button:hover{border-color:#2f3442}
+    .danger{border-color:rgba(255,92,124,.35);color:#ffd9e0}
+    main{overflow:hidden;position:relative}
+    .chat{height:100%;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
+    .msg{display:grid;grid-template-columns:40px 1fr;gap:10px;align-items:start;animation:fadeIn 160ms ease-out both}
+    .avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,rgba(124,92,255,.25),rgba(67,217,173,.25));display:grid;place-items:center;color:#cfd6ff;font-weight:700;font-size:13px;border:1px solid var(--border)}
+    .bubble{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px 14px;white-space:pre-wrap;word-wrap:break-word}
+    .you .bubble{background:#10131a}
+    .meta{margin-top:6px;font-size:12px;color:var(--muted)}
+    .inputbar{border-top:1px solid var(--border);padding:10px 14px;display:grid;grid-template-columns:1fr auto;gap:10px;background:linear-gradient(180deg,rgba(67,217,173,.06),rgba(67,217,173,0))}
+    textarea{width:100%;resize:none;min-height:44px;max-height:220px;border-radius:12px;border:1px solid var(--border);background:#0f1218;color:var(--text);padding:10px 12px;outline:none}
+    .send{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,rgba(124,92,255,.25),rgba(67,217,173,.25));border:1px solid #2a2f3f;padding:8px 12px;border-radius:12px}
+    .hint{text-align:center;color:var(--muted);font-size:12px;padding:6px 0 10px 0}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;color:#cde9ff;border:1px solid #2b3344;background:#0e141f;margin:0 3px;cursor:pointer}
+    .system{color:var(--muted);font-size:13px;text-align:center;padding:8px 0}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:translateY(0)}}
+    .small{font-size:12px;color:var(--muted)}
+    .link{color:#b9c4ff;text-decoration:underline dotted;text-underline-offset:2px}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          <div class="title">Sleep AI</div>
+          <div class="subtitle">Answer-anything (free online sources, no keys)</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="copyBtn" title="Copy chat">Copy</button>
+        <button id="clearBtn" class="danger" title="Clear chat">Clear</button>
+      </div>
+    </header>
+
+    <main>
+      <div id="chat" class="chat" aria-live="polite" aria-label="Chat transcript"></div>
+      <div class="hint">
+        Try:
+        <span class="pill">who is Ada Lovelace</span>
+        <span class="pill">weather in Sylhet</span>
+        <span class="pill">time in Tokyo</span>
+        <span class="pill">convert 100 USD to BDT</span>
+        <span class="pill">btc price</span>
+        <span class="pill">news</span>
+        <span class="pill">browser info</span>
+        <span class="pill">summarize https://en.wikipedia.org/wiki/Sylhet</span>
+      </div>
+    </main>
+
+    <div class="inputbar">
+      <textarea id="input" placeholder="Ask anything... Shift+Enter = new line" rows="1"></textarea>
+      <button id="send" class="send">Send ⮞</button>
+    </div>
+  </div>
+
+  <script>
+    // Sleep AI (Online): Free public endpoints, no keys. Provider-based routing so you can customize easily.
+
+    // ---------- DOM helpers ----------
+    const $ = (s, el=document) => el.querySelector(s);
+    const chatEl = $('#chat'), inputEl = $('#input'), sendBtn = $('#send');
+    const clearBtn = $('#clearBtn'), copyBtn = $('#copyBtn');
+    const nowTime = () => new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+    function addMessage(role, text) {
+      const row = document.createElement('div');
+      row.className = 'msg ' + (role === 'user' ? 'you' : 'bot');
+      const avatar = document.createElement('div'); avatar.className = 'avatar'; avatar.textContent = role === 'user' ? 'YOU' : 'AI';
+      const bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.textContent = text;
+      const meta = document.createElement('div'); meta.className = 'meta small';
+      meta.textContent = (role === 'user' ? 'You • ' : 'Sleep AI • ') + nowTime();
+      const wrap = document.createElement('div'); wrap.append(bubble, meta);
+      row.append(avatar, wrap); chatEl.appendChild(row);
+      chatEl.scrollTop = chatEl.scrollHeight; persist();
+      return bubble;
+    }
+    function systemNote(text) { const div = document.createElement('div'); div.className='system'; div.textContent=text; chatEl.appendChild(div); chatEl.scrollTop = chatEl.scrollHeight; }
+
+    // ---------- Persistence ----------
+    const STORE_KEY = 'sleep-ai-online-v1';
+    function persist() {
+      const entries = [...chatEl.querySelectorAll('.msg')].map(n => ({
+        role: n.classList.contains('you') ? 'user' : 'bot',
+        text: n.querySelector('.bubble')?.textContent || ''
+      }));
+      localStorage.setItem(STORE_KEY, JSON.stringify(entries));
+    }
+    function restore() {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return welcome();
+      try { JSON.parse(raw).forEach(m => addMessage(m.role, m.text)); } catch { welcome(); }
+    }
+    function welcome() {
+      addMessage('bot',
+`Hi — I’m Sleep AI (online).
+I can fetch:
+• Wikipedia facts and DuckDuckGo instant answers,
+• Weather (Open-Meteo), time by city, currency FX,
+• Crypto prices and tech news,
+• Math, unit conversion, and browser info,
+• Summaries of CORS-allowed URLs.
+Ask anything.`);
+    }
+
+    // ---------- Utilities ----------
+    const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+    async function fetchJSON(url, opts={}, timeoutMs=12000) {
+      const ctrl = new AbortController(); const id = setTimeout(()=>ctrl.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { ...opts, signal: ctrl.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } finally { clearTimeout(id); }
+    }
+    async function fetchText(url, opts={}, timeoutMs=12000) {
+      const ctrl = new AbortController(); const id = setTimeout(()=>ctrl.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { ...opts, signal: ctrl.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.text();
+      } finally { clearTimeout(id); }
+    }
+    const clamp = (n,min,max)=>Math.max(min,Math.min(max,n));
+    const fmt = (n,d=2)=>Number(n).toLocaleString(undefined,{maximumFractionDigits:d});
+    function truncate(s, n=500){ return s.length>n ? s.slice(0,n-1)+'…' : s; }
+    function firstLine(s){ const i = s.indexOf('\n'); return i>=0?s.slice(0,i):s; }
+
+    // ---------- Provider architecture ----------
+    // A provider has: name, match(q), answer(q, bubble, ctx) -> string
+    // The first provider whose match(q) returns true gets to answer.
+    const providers = [];
+
+    function register(p){ providers.push(p); }
+
+    async function routeAndAnswer(q, bubble) {
+      const ctx = { raw:q, low:q.toLowerCase().trim() };
+      for (const p of providers) {
+        try {
+          if (p.match(ctx)) {
+            const res = await p.answer(ctx, bubble);
+            return res;
+          }
+        } catch (err) {
+          console.error(p.name,'error:',err);
+          return `Error in ${p.name}: ${err.message || err}`;
+        }
+      }
+      // If
